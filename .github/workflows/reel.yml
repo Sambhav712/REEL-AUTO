@@ -1,0 +1,66 @@
+name: Daily Reel
+
+on:
+  schedule:
+    - cron: "30 12 * * *"   # 6:00 PM IST daily (UTC = IST - 5:30)
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "Optional topic (blank = next from topics.txt)"
+        required: false
+      dry_run:
+        description: "1 = build video only, do not upload"
+        required: false
+        default: "0"
+
+jobs:
+  reel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ffmpeg and fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-core
+
+      - run: pip install -r requirements.txt
+
+      - name: Make reel and publish
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          IG_TOKEN: ${{ secrets.IG_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
+          LANGUAGE: ${{ vars.LANGUAGE || 'hi' }}
+          NICHE: ${{ vars.NICHE || 'interesting facts' }}
+          TOPIC: ${{ github.event.inputs.topic }}
+          DRY_RUN: ${{ github.event.inputs.dry_run == '1' && '1' || '' }}
+        run: python main.py
+
+      - name: Save refreshed Instagram token
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -n "$GH_TOKEN" ] && [ -f new_token.txt ]; then
+            echo "::add-mask::$(cat new_token.txt)"
+            gh secret set IG_TOKEN --body "$(cat new_token.txt)" --repo "$GITHUB_REPOSITORY"
+          fi
+
+      - name: Keep the video for 3 days (debug)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reel
+          path: output/
+          retention-days: 3
+          if-no-files-found: ignore
