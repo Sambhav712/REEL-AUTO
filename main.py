@@ -131,13 +131,19 @@ Rules:
 
 def gen_script(topic):
     need("GEMINI_API_KEY", GEMINI_API_KEY)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
     body = {
         "contents": [{"parts": [{"text": PROMPT.format(
             niche=NICHE, topic=topic, lang=LANG_NAME, words=70 if LANGUAGE == "hi" else 85)}]}],
         "generationConfig": {"responseMimeType": "application/json", "temperature": 0.8},
     }
-    r = http("POST", url, params={"key": GEMINI_API_KEY}, json=body, timeout=90)
+    models = list(dict.fromkeys([GEMINI_MODEL, "gemini-3.1-flash-lite"]))
+    r = None
+    for model in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        r = http("POST", url, params={"key": GEMINI_API_KEY}, json=body, timeout=90)
+        if r.status_code == 200:
+            break
+        log(f"Gemini {model} failed ({r.status_code}), trying fallback...")
     if r.status_code != 200:
         raise RuntimeError(f"Gemini error {r.status_code}: {r.text[:400]}")
     text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
@@ -164,7 +170,13 @@ def duration(path):
 def make_voice(scenes):
     for i, s in enumerate(scenes):
         p = WORK / f"voice_{i}.mp3"
-        asyncio.run(_tts(s["narration"], p))
+        try:
+            asyncio.run(_tts(s["narration"], p))
+        except Exception as e:
+            if i == 0:
+                log(f"edge-tts failed ({e}), using gTTS fallback...")
+            from gtts import gTTS
+            gTTS(text=s["narration"], lang=LANGUAGE if LANGUAGE in ("hi", "en") else "en").save(str(p))
         s["audio"] = p
         s["dur"] = duration(p) + 0.25  # tiny pause between scenes
     return scenes
