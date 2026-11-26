@@ -2,7 +2,7 @@ name: Daily Reel
 
 on:
   schedule:
-    - cron: "30 12 * * *"   # 6:00 PM IST daily (UTC = IST - 5:30)
+    - cron: "30 15 * * *"   # 9:00 PM IST daily (UTC = IST - 5:30)
   workflow_dispatch:
     inputs:
       topic:
